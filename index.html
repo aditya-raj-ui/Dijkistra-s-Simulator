@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link-State Routing Simulator (Dijkstra)</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --line: #e1e4ea;
+    --ink: #1b2430;
+    --muted: #6b7686;
+    --teal: #0e7c86;
+    --teal-soft: #d9eef0;
+    --amber: #e0a100;
+    --red: #c2410c;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  header {
+    padding: 18px 28px 6px;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+    gap: 16px;
+    padding: 14px 28px 28px;
+    align-items: start;
+  }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 12px 14px 24px; } header { padding: 16px 14px 4px; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .card + .card { margin-top: 16px; }
+  h2 { margin: 0 0 10px; font-size: 14px; font-weight: 650; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+
+  /* controls */
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label { color: var(--muted); font-size: 12.5px; }
+  select, input[type=number] {
+    font: inherit;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+  }
+  input[type=number] { width: 70px; }
+  button {
+    font: inherit;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button:hover { background: #f0f2f5; }
+  button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+  button.primary:hover { background: #0b6970; }
+  button.danger { color: var(--red); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+  button:disabled { opacity: .45; cursor: default; }
+
+  /* graph */
+  #graph-wrap { padding: 8px; }
+  svg#graph { width: 100%; height: auto; display: block; touch-action: none; user-select: none; }
+  .edge-line { stroke: #aab2bf; stroke-width: 2; }
+  .edge-line.tree { stroke: var(--teal); stroke-width: 3.5; }
+  .edge-line.path { stroke: var(--amber); stroke-width: 6; }
+  .edge-line.down { stroke: #c5cad3; stroke-dasharray: 6 6; stroke-width: 2; }
+  .edge-hit { stroke: transparent; stroke-width: 16; cursor: pointer; }
+  .edge-label { font-size: 12.5px; font-weight: 600; fill: var(--ink); paint-order: stroke; stroke: #fff; stroke-width: 4px; text-anchor: middle; dominant-baseline: middle; }
+  .edge-label.down { fill: var(--muted); text-decoration: line-through; }
+  .node circle { fill: #fff; stroke: #7a8494; stroke-width: 2; cursor: grab; }
+  .node.visited circle { fill: var(--teal-soft); stroke: var(--teal); }
+  .node.current circle { fill: var(--amber); stroke: #a67800; }
+  .node.source circle { stroke-width: 4; }
+  .node.onpath circle { stroke: var(--amber); stroke-width: 4; }
+  .node text.name { font-size: 15px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; fill: var(--ink); }
+  .node text.dist { font-size: 12px; text-anchor: middle; fill: var(--muted); pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
+  .node.visited text.dist, .node.current text.dist { fill: var(--teal); font-weight: 700; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 6px 2px; color: var(--muted); font-size: 12.5px; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 2px solid #7a8494; background: #fff; }
+  .legend .l-cur::before { background: var(--amber); border-color: #a67800; }
+  .legend .l-vis::before { background: var(--teal-soft); border-color: var(--teal); }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--muted); font-size: 12.5px; }
+  tbody tr.clickable { cursor: pointer; }
+  tbody tr.clickable:hover { background: #f4f6f8; }
+  tbody tr.selected { background: #fdf3d1; }
+  td.dim { color: var(--muted); }
+  .route {
+    margin-top: 12px; padding: 10px 12px; border-radius: 6px;
+    background: #fdf6df; border: 1px solid #f0dca0; min-height: 40px;
+  }
+  .route.empty { background: #f7f8fa; border-color: var(--line); color: var(--muted); }
+
+  #status { margin: 10px 0 0; padding: 8px 10px; background: #f1f6f7; border-radius: 6px; min-height: 36px; }
+  #log { max-height: 190px; overflow-y: auto; margin: 0; padding-left: 20px; font-size: 13px; }
+  #log li { margin-bottom: 3px; }
+  #log li:last-child { font-weight: 600; }
+
+  #link-list { margin-top: 12px; display: grid; gap: 6px; max-height: 220px; overflow-y: auto; }
+  .link-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .link-item .nm { flex: 1; font-weight: 600; }
+  .link-item .nm.down { color: var(--muted); text-decoration: line-through; }
+  .link-item button { padding: 3px 8px; font-size: 12.5px; }
+  #msg { color: var(--red); font-size: 12.5px; min-height: 18px; margin-top: 6px; }
+  .divider { height: 1px; background: var(--line); margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Link-State Routing Simulator</h1>
+  <p>Every router knows the full network map. Pick a source router and run Dijkstra's algorithm to build its routing table and see the best route to every destination.</p>
+</header>
+
+<main>
+  <!-- LEFT: network -->
+  <section>
+    <div class="card" id="graph-wrap">
+      <svg id="graph" viewBox="0 0 760 470" aria-label="Network graph"></svg>
+      <div class="legend">
+        <span>Not visited</span>
+        <span class="l-cur">Being processed</span>
+        <span class="l-vis">Final (shortest cost fixed)</span>
+      </div>
+      <p class="hint" style="margin-left:6px">Drag a router to move it. Double-click empty space to add a router. Click a link to fail or restore it. Click a router to choose it as the source.</p>
+    </div>
+
+    <div class="card">
+      <h2>Build the network</h2>
+      <div class="row">
+        <button id="btn-add-node">Add router</button>
+        <select id="rm-node" aria-label="Router to remove"></select>
+        <button id="btn-rm-node" class="danger">Remove router</button>
+        <span style="flex:1"></span>
+        <button id="btn-sample">Load sample</button>
+        <button id="btn-clear" class="danger">Clear all</button>
+      </div>
+      <div class="divider"></div>
+      <div class="row">
+        <label for="l-from">Link</label>
+        <select id="l-from"></select>
+        <label for="l-to">to</label>
+        <select id="l-to"></select>
+        <label for="l-cost">cost</label>
+        <input type="number" id="l-cost" min="1" value="1">
+        <button id="btn-add-link">Add link</button>
+      </div>
+      <div id="msg" role="alert"></div>
+      <div id="link-list"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: simulation -->
+  <section>
+    <div class="card">
+      <h2>Run Dijkstra</h2>
+      <div class="row">
+        <label for="source">Source router</label>
+        <select id="source"></select>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btn-run" class="primary">Run</button>
+        <button id="btn-step">Step</button>
+        <button id="btn-finish">Show result</button>
+        <button id="btn-reset">Reset</button>
+      </div>
+      <div id="status">Choose a source and press Run.</div>
+    </div>
+
+    <div class="card">
+      <h2>Routing table <span id="rt-owner" style="color:var(--muted);font-weight:400"></span></h2>
+      <table>
+        <thead><tr><th>Destination</th><th>Next hop</th><th>Cost</th><th>Path</th></tr></thead>
+        <tbody id="rt-body"></tbody>
+      </table>
+      <div id="route" class="route empty">Click a row to see the optimal route to that destination.</div>
+    </div>
+
+    <div class="card">
+      <h2>Algorithm steps</h2>
+      <ol id="log"></ol>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------- State ---------- */
+  let nodes = [];          // {id, name, x, y}
+  let edges = [];          // {a, b, w, up}
+  let nextId = 0;
+  let source = null;
+  let steps = null;        // array of snapshots from Dijkstra
+  let idx = -1;            // current snapshot index
+  let timer = null;
+  let selDest = null;
+  const W = 760, H = 470, R = 24;
+
+  const $ = s => document.querySelector(s);
+  const svg = $("#graph");
+  const byId = id => nodes.find(n => n.id === id);
+  const nm = id => byId(id).name;
+
+  /* ---------- Network editing ---------- */
+  function nextName() {
+    const used = new Set(nodes.map(n => n.name));
+    for (let i = 0; i < 26; i++) { const c = String.fromCharCode(65 + i); if (!used.has(c)) return c; }
+    let k = 1; while (used.has("R" + k)) k++; return "R" + k;
+  }
+  function addNode(x, y) {
+    if (nodes.length >= 20) return setMsg("Maximum 20 routers.");
+    if (x == null) {
+      // find a free-ish spot
+      for (let t = 0; t < 60; t++) {
+        x = 60 + Math.random() * (W - 120); y = 50 + Math.random() * (H - 100);
+        if (nodes.every(n => Math.hypot(n.x - x, n.y - y) > 80)) break;
+      }
+    }
+    nodes.push({ id: nextId++, name: nextName(), x, y });
+    topologyChanged();
+  }
+  function removeNode(id) {
+    nodes = nodes.filter(n => n.id !== id);
+    edges = edges.filter(e => e.a !== id && e.b !== id);
+    topologyChanged();
+  }
+  function addLink(a, b, w) {
+    if (a === b) return setMsg("Choose two different routers.");
+    if (!Number.isInteger(w) || w < 1) return setMsg("Cost must be a whole number of at least 1.");
+    const ex = edges.find(e => (e.a === a && e.b === b) || (e.a === b && e.b === a));
+    if (ex) { ex.w = w; ex.up = true; } else edges.push({ a, b, w, up: true });
+    setMsg("");
+    topologyChanged();
+  }
+  function loadSample() {
+    nodes = []; edges = []; nextId = 0;
+    const pos = [[90,240],[230,90],[250,385],[470,90],[670,240],[470,385]];
+    pos.forEach(p => nodes.push({ id: nextId++, name: String.fromCharCode(65 + nodes.length), x: p[0], y: p[1] }));
+    [[0,1,7],[0,2,9],[0,5,14],[1,2,10],[1,3,15],[2,3,11],[2,5,2],[3,4,6],[4,5,9]]
+      .forEach(([a,b,w]) => edges.push({ a, b, w, up: true }));
+    source = 0; selDest = null;
+    topologyChanged();
+  }
+  function setMsg(t) { $("#msg").textContent = t; }
+
+  function topologyChanged() {
+    stopTimer();
+    steps = null; idx = -1; selDest = null;
+    if (!nodes.find(n => n.id === source)) source = nodes.length ? nodes[0].id : null;
+    refreshSelects();
+    renderAll();
+  }
+
+  /* ---------- Dijkstra (records every step) ---------- */
+  function buildSteps(src) {
+    const dist = {}, prev = {}, visited = new Set();
+    nodes.forEach(n => { dist[n.id] = Infinity; prev[n.id] = null; });
+    dist[src] = 0;
+    const snap = (cur, msg) => ({
+      cur, msg,
+      visited: new Set(visited),
+      dist: { ...dist },
+      prev: { ...prev }
+    });
+    const out = [snap(null, `Start: distance to ${nm(src)} is 0, all other routers are ∞.`)];
+
+    while (true) {
+      let u = null;
+      nodes.forEach(n => {
+        if (visited.has(n.id) || dist[n.id] === Infinity) return;
+        if (u === null || dist[n.id] < dist[u] || (dist[n.id] === dist[u] && n.name < nm(u))) u = n.id;
+      });
+      if (u === null) break;
+      visited.add(u);
+      const notes = [`Pick ${nm(u)} (cost ${dist[u]}) — its shortest path is now final.`];
+      edges.filter(e => e.up && (e.a === u || e.b === u)).forEach(e => {
+        const v = e.a === u ? e.b : e.a;
+        if (visited.has(v)) return;
+        const alt = dist[u] + e.w;
+        if (alt < dist[v]) {
+          notes.push(`Relax ${nm(u)}–${nm(v)}: ${dist[u]} + ${e.w} = ${alt} is better than ${dist[v] === Infinity ? "∞" : dist[v]}, so ${nm(v)} is reached via ${nm(u)}.`);
+          dist[v] = alt; prev[v] = u;
+        } else {
+          notes.push(`Check ${nm(u)}–${nm(v)}: ${alt} is not better than ${dist[v]}, no change.`);
+        }
+      });
+      out.push(snap(u, notes.join("\n")));
+    }
+    const unreachable = nodes.filter(n => !visited.has(n.id)).map(n => n.name);
+    const last = out[out.length - 1];
+    out.push({
+      ...snap(null, ""),
+      msg: "Done. " + (unreachable.length ? `Unreachable from ${nm(src)}: ${unreachable.join(", ")}.` : `Every router is reachable from ${nm(src)}.`),
+      done: true
+    });
+    return out;
+  }
+
+  function pathTo(prev, dest, src) {
+    const p = [dest];
+    let c = dest;
+    while (c !== src) { c = prev[c]; if (c === null || c === undefined) return null; p.unshift(c); }
+    return p;
+  }
+
+  /* ---------- Playback ---------- */
+  function ensureSteps() {
+    if (source === null) { $("#status").textContent = "Add at least one router first."; return false; }
+    if (!steps) { steps = buildSteps(source); idx = -1; }
+    return true;
+  }
+  function stepForward() {
+    if (!ensureSteps()) return false;
+    if (idx >= steps.length - 1) { stopTimer(); return false; }
+    idx++;
+    if (idx === steps.length - 1) stopTimer();
+    renderAll();
+    return true;
+  }
+  function stopTimer() { if (timer) { clearInterval(timer); timer = null; } $("#btn-run").textContent = "Run"; }
+  function toggleRun() {
+    if (timer) { stopTimer(); return; }
+    if (!ensureSteps()) return;
+    if (idx >= steps.length - 1) { idx = -1; }
+    $("#btn-run").textContent = "Pause";
+    stepForward();
+    timer = setInterval(() => { if (!stepForward()) stopTimer(); }, 1100);
+  }
+  function finish() {
+    if (!ensureSteps()) return;
+    stopTimer(); idx = steps.length - 1; renderAll();
+  }
+  function reset() { stopTimer(); steps = null; idx = -1; selDest = null; renderAll(); }
+
+  /* ---------- Rendering ---------- */
+  function cur() { return steps && idx >= 0 ? steps[idx] : null; }
+
+  function drawGraph() {
+    const s = cur();
+    const pathIds = (s && selDest !== null && s.visited.has(selDest)) ? pathTo(s.prev, selDest, source) : null;
+    const pathEdges = new Set();
+    if (pathIds) for (let i = 0; i < pathIds.length - 1; i++) pathEdges.add(pathIds[i] + "-" + pathIds[i + 1]);
+
+    let html = "";
+    edges.forEach((e, i) => {
+      const A = byId(e.a), B = byId(e.b);
+      let cls = "edge-line";
+      if (!e.up) cls += " down";
+      else if (s) {
+        const key1 = e.a + "-" + e.b, key2 = e.b + "-" + e.a;
+        if (pathEdges.has(key1) || pathEdges.has(key2)) cls += " path";
+        else if ((s.prev[e.b] === e.a && s.visited.has(e.b)) || (s.prev[e.a] === e.b && s.visited.has(e.a))) cls += " tree";
+      }
+      const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+      html += `<g data-edge="${i}">
+        <line class="${cls}" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}"/>
+        <line class="edge-hit" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}"><title>Click to ${e.up ? "fail" : "restore"} this link</title></line>
+        <text class="edge-label ${e.up ? "" : "down"}" x="${mx}" y="${my}">${e.w}</text>
+      </g>`;
+    });
+    nodes.forEach(n => {
+      let cls = "node";
+      if (s) {
+        if (s.visited.has(n.id)) cls += " visited";
+        if (s.cur === n.id) cls += " current";
+      }
+      if (n.id === source) cls += " source";
+      if (pathIds && pathIds.includes(n.id)) cls += " onpath";
+      let d = "";
+      if (s) { const v = s.dist[n.id]; d = v === Infinity ? "∞" : v; }
+      html += `<g class="${cls}" data-node="${n.id}">
+        <circle cx="${n.x}" cy="${n.y}" r="${R}"/>
+        <text class="name" x="${n.x}" y="${n.y}">${n.name}</text>
+        ${s ? `<text class="dist" x="${n.x}" y="${n.y - R - 8}">${d}</text>` : ""}
+      </g>`;
+    });
+    if (!nodes.length) html = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#6b7686" font-size="15">Double-click here to add a router, or press "Load sample".</text>`;
+    svg.innerHTML = html;
+  }
+
+  function drawTable() {
+    const s = cur();
+    const body = $("#rt-body");
+    $("#rt-owner").textContent = source !== null && s ? `for router ${nm(source)}` : "";
+    if (!s) {
+      body.innerHTML = `<tr><td colspan="4" class="dim">Run the algorithm to generate the table.</td></tr>`;
+      return drawRoute();
+    }
+    let rows = "";
+    nodes.filter(n => n.id !== source).forEach(n => {
+      if (s.visited.has(n.id)) {
+        const p = pathTo(s.prev, n.id, source);
+        const hop = p[1];
+        rows += `<tr class="clickable ${selDest === n.id ? "selected" : ""}" data-dest="${n.id}">
+          <td><b>${n.name}</b></td><td>${nm(hop)}</td><td>${s.dist[n.id]}</td><td>${p.map(nm).join(" → ")}</td></tr>`;
+      } else {
+        const unreachable = s.done;
+        rows += `<tr><td><b>${n.name}</b></td><td class="dim">—</td><td class="dim">${unreachable ? "∞" : (s.dist[n.id] === Infinity ? "∞" : s.dist[n.id] + "?")}</td><td class="dim">${unreachable ? "unreachable" : "not final yet"}</td></tr>`;
+      }
+    });
+    body.innerHTML = rows || `<tr><td colspan="4" class="dim">Only one router in the network.</td></tr>`;
+    drawRoute();
+  }
+
+  function drawRoute() {
+    const box = $("#route"), s = cur();
+    if (s && selDest !== null && s.visited.has(selDest) && selDest !== source) {
+      const p = pathTo(s.prev, selDest, source);
+      box.className = "route";
+      box.innerHTML = `<b>Optimal route ${nm(source)} to ${nm(selDest)}:</b> ${p.map(nm).join(" → ")}<br>Total cost: <b>${s.dist[selDest]}</b>`;
+    } else {
+      box.className = "route empty";
+      box.textContent = "Click a row to see the optimal route to that destination.";
+    }
+  }
+
+  function drawStatus() {
+    const s = cur();
+    $("#status").textContent = s ? (s.msg.split("\n")[0]) : "Choose a source and press Run.";
+    let list = "";
+    if (steps && idx >= 0) {
+      for (let i = 0; i <= idx; i++) {
+        const lines = steps[i].msg.split("\n").map(l => l.replace(/</g, "&lt;")).join("<br>");
+        list += `<li>${lines}</li>`;
+      }
+    }
+    const log = $("#log");
+    log.innerHTML = list || `<li style="list-style:none;margin-left:-20px;color:var(--muted)">Steps will appear here as the algorithm runs.</li>`;
+    log.scrollTop = log.scrollHeight;
+    const atEnd = steps && idx >= steps.length - 1;
+    $("#btn-step").disabled = !!atEnd;
+    $("#btn-finish").disabled = !!atEnd;
+  }
+
+  function drawLinks() {
+    const box = $("#link-list");
+    if (!edges.length) { box.innerHTML = `<div class="hint">No links yet.</div>`; return; }
+    box.innerHTML = edges.map((e, i) => `
+      <div class="link-item">
+        <span class="nm ${e.up ? "" : "down"}">${nm(e.a)} — ${nm(e.b)}</span>
+        <input type="number" min="1" value="${e.w}" data-cost="${i}" aria-label="Cost of link ${nm(e.a)} to ${nm(e.b)}">
+        <button data-toggle="${i}">${e.up ? "Fail" : "Restore"}</button>
+        <button data-del="${i}" class="danger">Delete</button>
+      </div>`).join("");
+  }
+
+  function refreshSelects() {
+    const opts = nodes.map(n => `<option value="${n.id}">${n.name}</option>`).join("");
+    const keep = id => { const el = $(id); const v = el.value; el.innerHTML = opts; if ([...el.options].some(o => o.value === v)) el.value = v; };
+    keep("#l-from"); keep("#l-to"); keep("#rm-node");
+    const src = $("#source"); src.innerHTML = opts;
+    if (source !== null) src.value = String(source);
+    if (nodes.length > 1 && $("#l-from").value === $("#l-to").value) $("#l-to").selectedIndex = 1;
+  }
+
+  function renderAll() { drawGraph(); drawTable(); drawStatus(); drawLinks(); }
+
+  /* ---------- Events ---------- */
+  $("#btn-add-node").onclick = () => addNode();
+  $("#btn-rm-node").onclick = () => { const v = $("#rm-node").value; if (v !== "") removeNode(+v); };
+  $("#btn-add-link").onclick = () => addLink(+$("#l-from").value, +$("#l-to").value, parseInt($("#l-cost").value, 10));
+  $("#btn-sample").onclick = loadSample;
+  $("#btn-clear").onclick = () => { nodes = []; edges = []; nextId = 0; source = null; topologyChanged(); };
+  $("#btn-run").onclick = toggleRun;
+  $("#btn-step").onclick = () => { stopTimer(); stepForward(); };
+  $("#btn-finish").onclick = finish;
+  $("#btn-reset").onclick = reset;
+  $("#source").onchange = e => { source = +e.target.value; reset(); };
+
+  $("#link-list").addEventListener("click", e => {
+    const t = e.target.closest("button"); if (!t) return;
+    if (t.dataset.toggle !== undefined) { edges[+t.dataset.toggle].up ^= true; topologyChanged(); }
+    if (t.dataset.del !== undefined) { edges.splice(+t.dataset.del, 1); topologyChanged(); }
+  });
+  $("#link-list").addEventListener("change", e => {
+    if (e.target.dataset.cost === undefined) return;
+    const w = parseInt(e.target.value, 10);
+    if (Number.isInteger(w) && w >= 1) { edges[+e.target.dataset.cost].w = w; topologyChanged(); }
+    else drawLinks();
+  });
+  $("#rt-body").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-dest]"); if (!tr) return;
+    selDest = selDest === +tr.dataset.dest ? null : +tr.dataset.dest;
+    drawGraph(); drawTable();
+  });
+
+  /* Graph interaction: drag, select source, toggle link, add node */
+  let drag = null, moved = false;
+  function svgPoint(ev) {
+    const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  svg.addEventListener("pointerdown", ev => {
+    const g = ev.target.closest("[data-node]");
+    if (!g) return;
+    drag = byId(+g.dataset.node); moved = false;
+    svg.setPointerCapture && svg.setPointerCapture(ev.pointerId);
+  });
+  svg.addEventListener("pointermove", ev => {
+    if (!drag) return;
+    const p = svgPoint(ev);
+    const nx = Math.min(W - R, Math.max(R, p.x)), ny = Math.min(H - R, Math.max(R + 14, p.y));
+    if (Math.hypot(nx - drag.x, ny - drag.y) > 2) moved = true;
+    drag.x = nx; drag.y = ny;
+    drawGraph();
+  });
+  svg.addEventListener("pointerup", () => {
+    if (drag && !moved) { source = drag.id; $("#source").value = String(source); reset(); }
+    drag = null;
+  });
+  svg.addEventListener("click", ev => {
+    const g = ev.target.closest("[data-edge]");
+    if (g) { edges[+g.dataset.edge].up ^= true; topologyChanged(); }
+  });
+  svg.addEventListener("dblclick", ev => {
+    if (ev.target.closest("[data-node]") || ev.target.closest("[data-edge]")) return;
+    const p = svgPoint(ev); addNode(p.x, p.y);
+  });
+
+  /* ---------- Start ---------- */
+  loadSample();
+})();
+</script>
+</body>
+</html>
